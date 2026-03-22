@@ -146,4 +146,33 @@
   .error-msg {
     @apply text-sm font-medium text-destructive mt-1;
   }
+
+  /* Tables */
+  .table-container {
+    @apply w-full overflow-x-auto;
+  }
+  table {
+    @apply w-full;
+  }
+  thead {
+    @apply border-b border-border bg-muted/50;
+  }
+  th {
+    @apply px-4 py-3 text-left text-sm font-semibold text-foreground;
+  }
+  th.text-right {
+    @apply text-right;
+  }
+  tbody tr {
+    @apply border-b border-border transition-colors hover:bg-muted/50;
+  }
+  tbody tr:last-child {
+    @apply border-b-0;
+  }
+  td {
+    @apply px-4 py-3 text-sm;
+  }
+  .btn-icon {
+    @apply inline-flex items-center justify-center w-8 h-8 p-0;
+  }
 }

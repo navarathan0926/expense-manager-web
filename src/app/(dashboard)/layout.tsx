@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, Receipt, Tags, LogOut, Loader2 } from 'lucide-react';
+import { LayoutDashboard, Receipt, Tags, LogOut, Loader2, Users } from 'lucide-react';
 import { useAuth } from '@/providers/AuthProvider';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -17,12 +17,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     );
   }
 
-  if (!user) return null; // handled by AuthProvider redirect
+  if (!user) return null; 
 
   const navItems = [
     { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
     { name: 'Expenses', href: '/expenses', icon: Receipt },
     { name: 'Categories', href: '/categories', icon: Tags },
+    ...(user.role?.toLowerCase() === 'admin' ? [{ name: 'Users', href: '/users', icon: Users }] : []),
   ];
 
   return (

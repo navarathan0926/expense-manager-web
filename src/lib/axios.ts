@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: '/api/v1', // ✅ hardcode proxy path, ignore env var for now
+  baseURL: '/api/v1', 
   headers: {
     'Content-Type': 'application/json',
   },
@@ -25,8 +25,7 @@ api.interceptors.response.use(
     if (error.response?.status === 401) {
       if (typeof window !== 'undefined') {
         const token = localStorage.getItem('token');
-        // ✅ Only redirect if token doesn't exist
-        // Don't redirect if token exists but request failed
+
         if (!token) {
           localStorage.removeItem('token');
           localStorage.removeItem('user');

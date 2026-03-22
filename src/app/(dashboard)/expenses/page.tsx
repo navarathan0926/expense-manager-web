@@ -107,11 +107,11 @@ export default function ExpensesPage() {
           <table>
             <thead>
               <tr>
-                <th>Date</th>
+                <th className="w-[120px]">Date</th>
                 <th>Description</th>
-                <th>Category</th>
-                <th className="text-right">Amount</th>
-                <th className="w-[100px]">Actions</th>
+                <th className="w-[150px]">Category</th>
+                <th className="text-right w-[100px]">Amount</th>
+                <th className="text-center w-[80px]">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -121,7 +121,7 @@ export default function ExpensesPage() {
                   <td className="text-sm">{expense.description}</td>
                   <td className="text-sm text-muted-foreground">{expense.categoryName}</td>
                   <td className="text-sm font-semibold text-right">${expense.amount.toFixed(2)}</td>
-                  <td>
+                  <td className="text-center">
                     <button 
                       className="btn btn-ghost btn-icon text-destructive hover:bg-destructive/10"
                       onClick={() => handleDelete(expense.id)}
