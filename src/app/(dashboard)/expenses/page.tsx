@@ -2,21 +2,28 @@
 
 import { useEffect, useState } from 'react';
 import api from '@/lib/axios';
-import { Expense, Category } from '@/types';
-import { Plus, Trash2, Download } from 'lucide-react';
+import { Expense, Category, Receipt } from '@/types';
+import { Plus, Trash2, Download, Pencil, Paperclip, Eye } from 'lucide-react';
+
+type ModalMode = 'create' | 'edit';
 
 export default function ExpensesPage() {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [receipts, setReceipts] = useState<Receipt[]>([]);
   const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [modalMode, setModalMode] = useState<ModalMode>('create');
+  const [editingId, setEditingId] = useState<string | null>(null);
 
-  // Form State
   const [amount, setAmount] = useState('');
   const [categoryId, setCategoryId] = useState('');
   const [description, setDescription] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [currency, setCurrency] = useState('USD');
+  const [receiptId, setReceiptId] = useState('');
+  const [receiptFile, setReceiptFile] = useState<File | null>(null);
+  const [linkedReceipt, setLinkedReceipt] = useState<Receipt | null>(null);
   const [formLoading, setFormLoading] = useState(false);
 
   useEffect(() => {
@@ -25,12 +32,14 @@ export default function ExpensesPage() {
 
   const fetchData = async () => {
     try {
-      const [expRes, catRes] = await Promise.all([
+      const [expRes, catRes, receiptRes] = await Promise.all([
         api.get('/expense'),
-        api.get('/category')
+        api.get('/category'),
+        api.get('/receipt'),
       ]);
       setExpenses(expRes.data);
       setCategories(catRes.data);
+      setReceipts(receiptRes.data);
     } catch (error) {
       console.error('Failed to fetch data', error);
     } finally {
@@ -38,10 +47,64 @@ export default function ExpensesPage() {
     }
   };
 
+  const resetForm = () => {
+    setAmount('');
+    setCategoryId('');
+    setDescription('');
+    setDate(new Date().toISOString().split('T')[0]);
+    setCurrency('USD');
+    setReceiptId('');
+    setReceiptFile(null);
+    setLinkedReceipt(null);
+    setEditingId(null);
+  };
+
+  const openCreateModal = () => {
+    resetForm();
+    setModalMode('create');
+    setIsModalOpen(true);
+  };
+
+  const openEditModal = async (expense: Expense) => {
+    setModalMode('edit');
+    setEditingId(expense.id);
+    setAmount(String(expense.amount));
+    setCategoryId(expense.categoryId);
+    setDescription(expense.description ?? '');
+    setDate(new Date(expense.date).toISOString().split('T')[0]);
+    setCurrency(expense.currency || 'USD');
+    setReceiptId(expense.receiptId ?? '');
+    setReceiptFile(null);
+    setLinkedReceipt(null);
+
+    if (expense.receiptId) {
+      try {
+        const res = await api.get<Receipt>(`/receipt/${expense.receiptId}`);
+        setLinkedReceipt(res.data);
+      } catch {
+        setLinkedReceipt(null);
+      }
+    }
+
+    setIsModalOpen(true);
+  };
+
+  const closeModal = () => {
+    setIsModalOpen(false);
+    resetForm();
+  };
+
+  const uploadReceipt = async (file: File): Promise<string> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const res = await api.post<Receipt>('/receipt', formData);
+    return res.data.id;
+  };
+
   const handleDelete = async (id: string) => {
     try {
       await api.delete(`/expense/${id}`);
-      setExpenses(expenses.filter(e => e.id !== id));
+      setExpenses(expenses.filter((e) => e.id !== id));
     } catch (error) {
       console.error('Failed to delete expense', error);
     }
@@ -60,28 +123,78 @@ export default function ExpensesPage() {
     }
   };
 
-  const handleCreate = async (e: React.FormEvent) => {
+  const previewReceipt = async (id: string) => {
+    try {
+      const res = await api.get(`/receipt/${id}/file`, { responseType: 'blob' });
+      const url = window.URL.createObjectURL(res.data);
+      window.open(url, '_blank');
+    } catch (error) {
+      console.error('Failed to preview receipt', error);
+    }
+  };
+
+  const downloadReceipt = async (id: string, fileName: string) => {
+    try {
+      const res = await api.get(`/receipt/${id}/file`, { responseType: 'blob' });
+      const url = window.URL.createObjectURL(res.data);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      a.click();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Failed to download receipt', error);
+    }
+  };
+
+  const clearReceipt = () => {
+    setReceiptId('');
+    setReceiptFile(null);
+    setLinkedReceipt(null);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormLoading(true);
     try {
-      await api.post('/expense', {
+      let nextReceiptId: string | null = receiptId || null;
+
+      if (receiptFile) {
+        nextReceiptId = await uploadReceipt(receiptFile);
+      }
+
+      const payload = {
         categoryId,
         amount: parseFloat(amount),
         currency,
         exchangeRate: 1.0,
         description,
-        date: new Date(date).toISOString()
-      });
-      setIsModalOpen(false);
-      fetchData(); // refresh list
+        date: new Date(date).toISOString(),
+        receiptId: nextReceiptId,
+      };
+
+      if (modalMode === 'edit' && editingId) {
+        await api.put(`/expense/${editingId}`, payload);
+      } else {
+        await api.post('/expense', payload);
+      }
+
+      closeModal();
+      await fetchData();
     } catch (error) {
-      console.error('Failed to create expense', error);
+      console.error('Failed to save expense', error);
     } finally {
       setFormLoading(false);
     }
   };
 
   if (loading) return <div className="text-muted-foreground p-4">Loading expenses...</div>;
+
+  const activeReceiptId = receiptId || linkedReceipt?.id;
+  const activeReceipt =
+    linkedReceipt ||
+    receipts.find((r) => r.id === receiptId) ||
+    null;
 
   return (
     <div className="flex flex-col gap-6">
@@ -95,7 +208,7 @@ export default function ExpensesPage() {
             <Download className="w-4 h-4" />
             <span className="hidden sm:inline">Export</span>
           </button>
-          <button className="btn btn-primary gap-2" onClick={() => setIsModalOpen(true)}>
+          <button className="btn btn-primary gap-2" onClick={openCreateModal}>
             <Plus className="w-4 h-4" />
             <span className="hidden sm:inline">Add Expense</span>
           </button>
@@ -111,28 +224,56 @@ export default function ExpensesPage() {
                 <th>Description</th>
                 <th className="w-[150px]">Category</th>
                 <th className="text-right w-[100px]">Amount</th>
-                <th className="text-center w-[80px]">Actions</th>
+                <th className="text-center w-[60px]">Receipt</th>
+                <th className="text-center w-[100px]">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {expenses.length > 0 ? expenses.map((expense) => (
-                <tr key={expense.id}>
-                  <td className="text-sm font-medium">{new Date(expense.date).toLocaleDateString()}</td>
-                  <td className="text-sm">{expense.description}</td>
-                  <td className="text-sm text-muted-foreground">{expense.categoryName}</td>
-                  <td className="text-sm font-semibold text-right">${expense.amount.toFixed(2)}</td>
-                  <td className="text-center">
-                    <button 
-                      className="btn btn-ghost btn-icon text-destructive hover:bg-destructive/10"
-                      onClick={() => handleDelete(expense.id)}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </td>
-                </tr>
-              )) : (
+              {expenses.length > 0 ? (
+                expenses.map((expense) => (
+                  <tr key={expense.id}>
+                    <td className="text-sm font-medium">
+                      {new Date(expense.date).toLocaleDateString()}
+                    </td>
+                    <td className="text-sm">{expense.description}</td>
+                    <td className="text-sm text-muted-foreground">{expense.categoryName}</td>
+                    <td className="text-sm font-semibold text-right">
+                      ${expense.amount.toFixed(2)}
+                    </td>
+                    <td className="text-center">
+                      {expense.receiptId ? (
+                        <button
+                          className="btn btn-ghost btn-icon"
+                          title="Preview receipt"
+                          onClick={() => previewReceipt(expense.receiptId!)}
+                        >
+                          <Paperclip className="w-4 h-4 text-primary" />
+                        </button>
+                      ) : (
+                        <span className="text-muted-foreground text-xs">—</span>
+                      )}
+                    </td>
+                    <td className="text-center">
+                      <div className="flex items-center justify-center gap-1">
+                        <button
+                          className="btn btn-ghost btn-icon"
+                          onClick={() => openEditModal(expense)}
+                        >
+                          <Pencil className="w-4 h-4" />
+                        </button>
+                        <button
+                          className="btn btn-ghost btn-icon text-destructive hover:bg-destructive/10"
+                          onClick={() => handleDelete(expense.id)}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              ) : (
                 <tr>
-                  <td colSpan={5} className="text-center text-sm text-muted-foreground h-24">
+                  <td colSpan={6} className="text-center text-sm text-muted-foreground h-24">
                     No expenses found. Add one to get started.
                   </td>
                 </tr>
@@ -145,55 +286,149 @@ export default function ExpensesPage() {
       {isModalOpen && (
         <div className="modal-overlay">
           <div className="modal-content">
-            <h3 className="text-lg font-semibold mb-4">Add New Expense</h3>
-            <form onSubmit={handleCreate} className="flex flex-col gap-4">
+            <h3 className="text-lg font-semibold mb-4">
+              {modalMode === 'edit' ? 'Edit Expense' : 'Add New Expense'}
+            </h3>
+            <form onSubmit={handleSubmit} className="flex flex-col gap-4">
               <div>
                 <label className="label">Amount</label>
-                <input 
-                  type="number" 
+                <input
+                  type="number"
                   step="0.01"
-                  className="input" 
+                  className="input"
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
-                  required 
+                  required
                 />
               </div>
               <div>
                 <label className="label">Category</label>
-                <select className="input" value={categoryId} onChange={(e) => setCategoryId(e.target.value)} required>
-                  <option value="" disabled>Select Category</option>
-                  {categories.map(c => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
+                <select
+                  className="input"
+                  value={categoryId}
+                  onChange={(e) => setCategoryId(e.target.value)}
+                  required
+                >
+                  <option value="" disabled>
+                    Select Category
+                  </option>
+                  {categories.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
                   ))}
                 </select>
               </div>
               <div>
                 <label className="label">Date</label>
-                <input 
-                  type="date" 
-                  className="input" 
+                <input
+                  type="date"
+                  className="input"
                   value={date}
                   onChange={(e) => setDate(e.target.value)}
-                  required 
+                  required
                 />
               </div>
               <div>
                 <label className="label">Description</label>
-                <input 
-                  type="text" 
-                  className="input" 
+                <input
+                  type="text"
+                  className="input"
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   maxLength={100}
                 />
               </div>
-              
+
+              <div>
+                <label className="label">Receipt</label>
+                <input
+                  type="file"
+                  className="input"
+                  accept="image/jpeg,image/png,image/webp,application/pdf"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0] ?? null;
+                    setReceiptFile(file);
+                    if (file) setReceiptId('');
+                  }}
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  JPEG, PNG, WebP, or PDF up to 5 MB. One receipt can be shared across expenses.
+                </p>
+              </div>
+
+              {receipts.length > 0 && (
+                <div>
+                  <label className="label">Or use existing receipt</label>
+                  <select
+                    className="input"
+                    value={receiptId}
+                    onChange={(e) => {
+                      setReceiptId(e.target.value);
+                      setReceiptFile(null);
+                      const match = receipts.find((r) => r.id === e.target.value);
+                      setLinkedReceipt(match ?? null);
+                    }}
+                    disabled={!!receiptFile}
+                  >
+                    <option value="">None</option>
+                    {receipts.map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.fileName} ({new Date(r.createdAt).toLocaleDateString()})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {(activeReceipt || receiptFile) && (
+                <div className="flex flex-wrap items-center gap-2 text-sm">
+                  <span className="text-muted-foreground">
+                    {receiptFile
+                      ? `New file: ${receiptFile.name}`
+                      : `Linked: ${activeReceipt?.fileName}`}
+                  </span>
+                  {activeReceiptId && !receiptFile && (
+                    <>
+                      <button
+                        type="button"
+                        className="btn btn-outline gap-1"
+                        onClick={() => previewReceipt(activeReceiptId)}
+                      >
+                        <Eye className="w-3 h-3" />
+                        Preview
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-outline gap-1"
+                        onClick={() =>
+                          downloadReceipt(
+                            activeReceiptId,
+                            activeReceipt?.fileName ?? 'receipt'
+                          )
+                        }
+                      >
+                        <Download className="w-3 h-3" />
+                        Download
+                      </button>
+                    </>
+                  )}
+                  <button type="button" className="btn btn-ghost" onClick={clearReceipt}>
+                    Clear
+                  </button>
+                </div>
+              )}
+
               <div className="flex justify-end gap-2 mt-4 pt-4 border-t border-border">
-                <button type="button" className="btn btn-ghost" onClick={() => setIsModalOpen(false)}>
+                <button type="button" className="btn btn-ghost" onClick={closeModal}>
                   Cancel
                 </button>
                 <button type="submit" className="btn btn-primary" disabled={formLoading}>
-                  {formLoading ? 'Saving...' : 'Save Expense'}
+                  {formLoading
+                    ? 'Saving...'
+                    : modalMode === 'edit'
+                      ? 'Update Expense'
+                      : 'Save Expense'}
                 </button>
               </div>
             </form>

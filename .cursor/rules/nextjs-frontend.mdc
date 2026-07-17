@@ -1,0 +1,47 @@
+---
+description: Next.js frontend conventions
+globs: **/*.{ts,tsx}
+alwaysApply: false
+---
+
+# Next.js Frontend Conventions
+
+## Stack & Version Notes
+
+- Next.js 16 + React 19 — APIs may differ from older Next.js versions
+- App Router with route groups: `(auth)` for login/register, `(dashboard)` for protected pages
+- Tailwind CSS 4 with custom utility classes in `globals.css` (`.btn`, `.card`, `.input`, `.modal-overlay`)
+
+## File Organization
+
+```
+src/app/          → pages and layouts (App Router)
+src/lib/axios.ts  → single API client (always use this, not raw fetch)
+src/types/        → TypeScript interfaces matching API DTOs
+src/providers/    → React context (AuthProvider)
+```
+
+## Client vs Server Components
+
+- Pages with hooks, localStorage, or event handlers → `'use client'` at top
+- Root `layout.tsx` wraps children in `AuthProvider`
+- Auth guard logic lives in `AuthProvider` — do not duplicate redirect logic in pages
+
+## API Integration
+
+- Base URL is `/api/v1` (proxied to backend via `API_PROXY_TARGET` env var)
+- Controller routes are singular: `/expense`, `/category`, `/auth`, `/reports`, `/export`
+- JWT attached automatically by axios interceptor from `localStorage`
+- 401 responses redirect to `/login` when no valid token
+- Blob downloads: `api.get('/export/csv', { responseType: 'blob' })`
+
+## UI Patterns
+
+- Use `lucide-react` for icons
+- Dark mode enabled via `className="dark"` on `<html>`
+- Admin-only nav items: check `user.role?.toLowerCase() === 'admin'`
+- Keep types in sync with backend DTOs in `src/types/index.ts`
+
+## Environment
+
+`.env.local` needs `API_PROXY_TARGET=https://localhost:{api-port}` (no trailing slash)

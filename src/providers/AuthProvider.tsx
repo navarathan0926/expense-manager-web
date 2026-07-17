@@ -3,11 +3,17 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { User } from '@/types';
+import {
+  clearAuthSession,
+  getStoredUser,
+  getToken,
+  saveAuthSession,
+} from '@/lib/auth-session';
 
 interface AuthContextType {
   user: User | null;
   token: string | null;
-  login: (token: string, user: User) => void;
+  login: (token: string, user: User) => boolean;
   logout: () => void;
   loading: boolean;
 }
@@ -22,33 +28,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
 
   useEffect(() => {
-    const storedToken = localStorage.getItem('token');
-    const storedUser = localStorage.getItem('user');
+    const storedToken = getToken();
+    const storedUser = getStoredUser();
 
     if (storedToken && storedUser) {
-      try {
-        const parsedUser = JSON.parse(storedUser);
-        setToken(storedToken);
-        setUser(parsedUser);
-      } catch (e) {
-        console.error('Failed to parse stored user', e);
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
-      }
+      setToken(storedToken);
+      setUser(storedUser);
+    } else {
+      clearAuthSession();
     }
+
     setLoading(false);
   }, []);
 
   const login = (newToken: string, newUser: User) => {
-    localStorage.setItem('token', newToken);
-    localStorage.setItem('user', JSON.stringify(newUser));
+    if (!saveAuthSession(newToken, newUser)) {
+      return false;
+    }
+
     setToken(newToken);
     setUser(newUser);
+    return true;
   };
 
   const logout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
+    clearAuthSession();
     setToken(null);
     setUser(null);
     router.replace('/login');
