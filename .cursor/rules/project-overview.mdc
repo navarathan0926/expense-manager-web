@@ -1,0 +1,22 @@
+---
+description: expense-manager-web standalone frontend project overview
+alwaysApply: true
+---
+
+# Expense Manager Web
+
+Standalone Next.js 16 repository. Consumes the **separate** `ExpenseManager.API` backend.
+
+## Backend Integration
+
+- API calls go through `src/lib/axios.ts` (baseURL `/api/v1`)
+- Dev proxy: `next.config.ts` rewrites to `API_PROXY_TARGET` in `.env.local`
+- Backend runs independently — coordinate API contract via backend `API_DOC.md`
+- Singular routes: `/expense`, `/category`, `/auth`, `/reports`, `/export`
+
+## Before Making Changes
+
+1. Read `AGENTS.md` in this repo
+2. Keep `src/types/index.ts` aligned with backend DTOs
+3. Never commit `.env.local` or hardcode backend URLs in components
+4. Work only in this repo — do not assume backend code is available

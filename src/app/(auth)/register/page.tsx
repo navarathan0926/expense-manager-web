@@ -22,7 +22,9 @@ export default function RegisterPage() {
 
     try {
       const { data } = await api.post('/auth/register', { email, password, userName });
-      login(data.token, data.user);
+      if (!login(data.token, data.user)) {
+        setError('Registration failed. Invalid response from server.');
+      }
     } catch (err: any) {
       setError(err.response?.data?.message || 'Registration failed.');
     } finally {

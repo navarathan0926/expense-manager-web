@@ -23,7 +23,10 @@ export default function LoginPage() {
 
     try {
       const { data } = await api.post('/auth/login', { email, password });
-      login(data.token, data.user);
+      if (!login(data.token, data.user)) {
+        setError('Login failed. Invalid response from server.');
+        return;
+      }
       router.push('/dashboard');
     } catch (err: any) {
       setError(err.response?.data?.message || 'Login failed. Please check your credentials.');
