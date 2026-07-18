@@ -10,7 +10,15 @@ export interface AuthResponse {
   user: User;
 }
 
-export type ReceiptStatus = 'Pending' | 'Uploaded' | 'Failed';
+export type ReceiptStatus =
+  | 'Pending'
+  | 'Uploaded'
+  | 'Failed'
+  | 'Processing'
+  | 'ReadyForReview'
+  | 'Confirmed'
+  | 'OcrFailed'
+  | number;
 
 export interface Receipt {
   id: string;
@@ -20,6 +28,42 @@ export interface Receipt {
   size: number;
   status: ReceiptStatus;
   createdAt: string;
+}
+
+export interface ReceiptLineItem {
+  description?: string | null;
+  quantity?: number | null;
+  unitPrice?: number | null;
+  totalPrice?: number | null;
+  suggestedCategoryId?: string | null;
+}
+
+export interface ReceiptExtraction {
+  receiptId: string;
+  status: ReceiptStatus;
+  merchant?: string | null;
+  transactionDate?: string | null;
+  totalAmount?: number | null;
+  currency?: string | null;
+  taxAmount?: number | null;
+  suggestedCategoryId?: string | null;
+  ocrErrorMessage?: string | null;
+  lineItems: ReceiptLineItem[];
+}
+
+export interface ConfirmReceiptExpenseItemDto {
+  amount: number;
+  categoryId: string;
+  description?: string | null;
+}
+
+export type ReceiptImportMode = 'Combined' | 'Itemized';
+
+export interface ConfirmReceiptExtractionDto {
+  currency: string;
+  date: string;
+  importMode: ReceiptImportMode;
+  expenses: ConfirmReceiptExpenseItemDto[];
 }
 
 export interface Expense {
