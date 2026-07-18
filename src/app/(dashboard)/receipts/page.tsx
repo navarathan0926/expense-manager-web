@@ -26,6 +26,7 @@ import {
   Receipt,
   ReceiptExtraction,
   ReceiptImportMode,
+  ReceiptProcessingStatus,
   ReceiptStatus,
 } from '@/types';
 import {
@@ -61,7 +62,6 @@ function getConfirmErrorMessage(error: unknown): string {
 export default function ReceiptsPage() {
   const [receipts, setReceipts] = useState<Receipt[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
-  const [draftCounts, setDraftCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [isReviewOpen, setIsReviewOpen] = useState(false);
@@ -84,22 +84,6 @@ export default function ReceiptsPage() {
     };
   }, []);
 
-  const loadDraftCounts = async (items: Receipt[]) => {
-    const ready = items.filter((r) => isReadyForReview(r.status));
-    const counts: Record<string, number> = {};
-    await Promise.all(
-      ready.map(async (receipt) => {
-        try {
-          const extraction = await fetchExtraction(receipt.id);
-          counts[receipt.id] = extraction.lineItems?.length ?? 0;
-        } catch {
-          counts[receipt.id] = 0;
-        }
-      })
-    );
-    setDraftCounts((prev) => ({ ...prev, ...counts }));
-  };
-
   const fetchData = async () => {
     try {
       const [receiptRes, catRes] = await Promise.all([
@@ -108,7 +92,6 @@ export default function ReceiptsPage() {
       ]);
       setReceipts(receiptRes.data);
       setCategories(catRes.data);
-      await loadDraftCounts(receiptRes.data);
     } catch (error) {
       console.error('Failed to fetch receipts', error);
     } finally {
@@ -128,22 +111,27 @@ export default function ReceiptsPage() {
     return res.data;
   };
 
+  const fetchProcessingStatus = async (id: string) => {
+    const res = await api.get<ReceiptProcessingStatus>(`/receipt/${id}/status`);
+    return res.data;
+  };
+
   const startPolling = (id: string) => {
     stopPolling();
     pollRef.current = setInterval(async () => {
       try {
-        const extraction = await fetchExtraction(id);
+        const status = await fetchProcessingStatus(id);
         setReceipts((prev) =>
-          prev.map((r) => (r.id === id ? { ...r, status: extraction.status } : r))
+          prev.map((r) =>
+            r.id === id
+              ? { ...r, status: status.status, lineItemCount: status.lineItemCount }
+              : r
+          )
         );
-        if (isReadyForReview(extraction.status)) {
+        if (isReadyForReview(status.status)) {
           stopPolling();
-          setDraftCounts((prev) => ({
-            ...prev,
-            [id]: extraction.lineItems?.length ?? 0,
-          }));
-          openReview(id, extraction);
-        } else if (isOcrFailed(extraction.status)) {
+          openReview(id);
+        } else if (isOcrFailed(status.status)) {
           stopPolling();
         }
       } catch (error) {
@@ -175,10 +163,6 @@ export default function ReceiptsPage() {
       );
       const suggestedMode = suggestImportMode(data);
       applyImportMode(data, suggestedMode);
-      setDraftCounts((prev) => ({
-        ...prev,
-        [id]: data.lineItems?.length ?? 0,
-      }));
     } catch (error) {
       console.error('Failed to load extraction', error);
     } finally {
@@ -223,11 +207,6 @@ export default function ReceiptsPage() {
     try {
       await api.delete(`/receipt/${id}`);
       setReceipts((prev) => prev.filter((r) => r.id !== id));
-      setDraftCounts((prev) => {
-        const next = { ...prev };
-        delete next[id];
-        return next;
-      });
     } catch (error) {
       console.error('Failed to delete receipt', error);
     }
@@ -351,9 +330,7 @@ export default function ReceiptsPage() {
             </thead>
             <tbody>
               {receipts.length > 0 ? (
-                receipts.map((receipt) => {
-                  const draftCount = draftCounts[receipt.id];
-                  return (
+                receipts.map((receipt) => (
                     <tr key={receipt.id}>
                       <td className="text-sm font-medium">{receipt.fileName}</td>
                       <td className="text-sm text-muted-foreground">
@@ -364,7 +341,7 @@ export default function ReceiptsPage() {
                       </td>
                       <td className="text-sm text-muted-foreground">
                         {isReadyForReview(receipt.status)
-                          ? `${draftCount ?? '…'} item${draftCount === 1 ? '' : 's'}`
+                          ? `${receipt.lineItemCount} item${receipt.lineItemCount === 1 ? '' : 's'}`
                           : isOcrInProgress(receipt.status)
                             ? 'Extracting…'
                             : '—'}
@@ -407,8 +384,7 @@ export default function ReceiptsPage() {
                         </div>
                       </td>
                     </tr>
-                  );
-                })
+                  ))
               ) : (
                 <tr>
                   <td colSpan={5} className="text-center text-sm text-muted-foreground h-24">
