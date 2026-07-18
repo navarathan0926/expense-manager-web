@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import api from '@/lib/axios';
+import { normalizeReceiptStatus } from '@/lib/receiptStatus';
 import { Expense, Category, Receipt } from '@/types';
 import { Plus, Trash2, Download, Pencil, Paperclip, Eye } from 'lucide-react';
 
@@ -22,7 +23,6 @@ export default function ExpensesPage() {
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [currency, setCurrency] = useState('USD');
   const [receiptId, setReceiptId] = useState('');
-  const [receiptFile, setReceiptFile] = useState<File | null>(null);
   const [linkedReceipt, setLinkedReceipt] = useState<Receipt | null>(null);
   const [formLoading, setFormLoading] = useState(false);
 
@@ -54,7 +54,6 @@ export default function ExpensesPage() {
     setDate(new Date().toISOString().split('T')[0]);
     setCurrency('USD');
     setReceiptId('');
-    setReceiptFile(null);
     setLinkedReceipt(null);
     setEditingId(null);
   };
@@ -74,7 +73,6 @@ export default function ExpensesPage() {
     setDate(new Date(expense.date).toISOString().split('T')[0]);
     setCurrency(expense.currency || 'USD');
     setReceiptId(expense.receiptId ?? '');
-    setReceiptFile(null);
     setLinkedReceipt(null);
 
     if (expense.receiptId) {
@@ -92,13 +90,6 @@ export default function ExpensesPage() {
   const closeModal = () => {
     setIsModalOpen(false);
     resetForm();
-  };
-
-  const uploadReceipt = async (file: File): Promise<string> => {
-    const formData = new FormData();
-    formData.append('file', file);
-    const res = await api.post<Receipt>('/receipt', formData);
-    return res.data.id;
   };
 
   const handleDelete = async (id: string) => {
@@ -133,23 +124,8 @@ export default function ExpensesPage() {
     }
   };
 
-  const downloadReceipt = async (id: string, fileName: string) => {
-    try {
-      const res = await api.get(`/receipt/${id}/file`, { responseType: 'blob' });
-      const url = window.URL.createObjectURL(res.data);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = fileName;
-      a.click();
-      window.URL.revokeObjectURL(url);
-    } catch (error) {
-      console.error('Failed to download receipt', error);
-    }
-  };
-
   const clearReceipt = () => {
     setReceiptId('');
-    setReceiptFile(null);
     setLinkedReceipt(null);
   };
 
@@ -157,12 +133,6 @@ export default function ExpensesPage() {
     e.preventDefault();
     setFormLoading(true);
     try {
-      let nextReceiptId: string | null = receiptId || null;
-
-      if (receiptFile) {
-        nextReceiptId = await uploadReceipt(receiptFile);
-      }
-
       const payload = {
         categoryId,
         amount: parseFloat(amount),
@@ -170,7 +140,7 @@ export default function ExpensesPage() {
         exchangeRate: 1.0,
         description,
         date: new Date(date).toISOString(),
-        receiptId: nextReceiptId,
+        receiptId: receiptId || null,
       };
 
       if (modalMode === 'edit' && editingId) {
@@ -190,11 +160,13 @@ export default function ExpensesPage() {
 
   if (loading) return <div className="text-muted-foreground p-4">Loading expenses...</div>;
 
+  const linkableReceipts = receipts.filter((r) => {
+    const status = normalizeReceiptStatus(r.status);
+    return status === 'Confirmed' || status === 'ReadyForReview' || status === 'Uploaded';
+  });
   const activeReceiptId = receiptId || linkedReceipt?.id;
   const activeReceipt =
-    linkedReceipt ||
-    receipts.find((r) => r.id === receiptId) ||
-    null;
+    linkedReceipt || receipts.find((r) => r.id === receiptId) || null;
 
   return (
     <div className="flex flex-col gap-6">
@@ -340,78 +312,43 @@ export default function ExpensesPage() {
                 />
               </div>
 
-              <div>
-                <label className="label">Receipt</label>
-                <input
-                  type="file"
-                  className="input"
-                  accept="image/jpeg,image/png,image/webp,application/pdf"
-                  onChange={(e) => {
-                    const file = e.target.files?.[0] ?? null;
-                    setReceiptFile(file);
-                    if (file) setReceiptId('');
-                  }}
-                />
-                <p className="text-xs text-muted-foreground mt-1">
-                  JPEG, PNG, WebP, or PDF up to 5 MB. One receipt can be shared across expenses.
-                </p>
-              </div>
-
-              {receipts.length > 0 && (
+              {linkableReceipts.length > 0 && (
                 <div>
-                  <label className="label">Or use existing receipt</label>
+                  <label className="label">Link receipt (optional)</label>
                   <select
                     className="input"
                     value={receiptId}
                     onChange={(e) => {
                       setReceiptId(e.target.value);
-                      setReceiptFile(null);
-                      const match = receipts.find((r) => r.id === e.target.value);
+                      const match = linkableReceipts.find((r) => r.id === e.target.value);
                       setLinkedReceipt(match ?? null);
                     }}
-                    disabled={!!receiptFile}
                   >
                     <option value="">None</option>
-                    {receipts.map((r) => (
+                    {linkableReceipts.map((r) => (
                       <option key={r.id} value={r.id}>
-                        {r.fileName} ({new Date(r.createdAt).toLocaleDateString()})
+                        {r.fileName}
                       </option>
                     ))}
                   </select>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Upload and process receipts on the Receipts page first.
+                  </p>
                 </div>
               )}
 
-              {(activeReceipt || receiptFile) && (
+              {activeReceipt && (
                 <div className="flex flex-wrap items-center gap-2 text-sm">
-                  <span className="text-muted-foreground">
-                    {receiptFile
-                      ? `New file: ${receiptFile.name}`
-                      : `Linked: ${activeReceipt?.fileName}`}
-                  </span>
-                  {activeReceiptId && !receiptFile && (
-                    <>
-                      <button
-                        type="button"
-                        className="btn btn-outline gap-1"
-                        onClick={() => previewReceipt(activeReceiptId)}
-                      >
-                        <Eye className="w-3 h-3" />
-                        Preview
-                      </button>
-                      <button
-                        type="button"
-                        className="btn btn-outline gap-1"
-                        onClick={() =>
-                          downloadReceipt(
-                            activeReceiptId,
-                            activeReceipt?.fileName ?? 'receipt'
-                          )
-                        }
-                      >
-                        <Download className="w-3 h-3" />
-                        Download
-                      </button>
-                    </>
+                  <span className="text-muted-foreground">Linked: {activeReceipt.fileName}</span>
+                  {activeReceiptId && (
+                    <button
+                      type="button"
+                      className="btn btn-outline gap-1"
+                      onClick={() => previewReceipt(activeReceiptId)}
+                    >
+                      <Eye className="w-3 h-3" />
+                      Preview
+                    </button>
                   )}
                   <button type="button" className="btn btn-ghost" onClick={clearReceipt}>
                     Clear
