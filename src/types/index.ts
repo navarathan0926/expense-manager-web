@@ -28,6 +28,14 @@ export interface Receipt {
   size: number;
   status: ReceiptStatus;
   createdAt: string;
+  lineItemCount: number;
+}
+
+export interface ReceiptProcessingStatus {
+  receiptId: string;
+  status: ReceiptStatus;
+  lineItemCount: number;
+  ocrErrorMessage?: string | null;
 }
 
 export interface ReceiptLineItem {
